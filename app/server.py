@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import List
 
 from fastapi import FastAPI, HTTPException
@@ -19,9 +18,6 @@ except ImportError:
 
 app = FastAPI(
     title="Meeting Scheduler API",
-    description="API for scheduling meetings with participant availability constraints",
-    version="1.0.0",
-    root_path=os.getenv("HF_SPACE_ROOT_PATH", ""),
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
@@ -74,11 +70,6 @@ class RootResponse(BaseModel):
     endpoints: List[str] = Field(description="Available API endpoints")
 
 
-def _prefixed_path(path: str) -> str:
-    root_path = app.root_path.rstrip("/")
-    return f"{root_path}{path}" if root_path else path
-
-
 def _ensure_state() -> None:
     if env._current_state is None:
         env.reset()
@@ -104,14 +95,9 @@ async def root() -> dict[str, object]:
     return {
         "name": "Meeting Scheduler API",
         "status": "ok",
-        "docs_url": _prefixed_path("/docs"),
-        "openapi_url": _prefixed_path("/openapi.json"),
-        "endpoints": [
-            _prefixed_path("/health"),
-            _prefixed_path("/reset"),
-            _prefixed_path("/step"),
-            _prefixed_path("/state"),
-        ],
+        "docs_url": "/docs",
+        "openapi_url": "/openapi.json",
+        "endpoints": ["/health", "/reset", "/step", "/state"],
     }
 
 
@@ -201,4 +187,4 @@ async def step(request: StepRequest) -> dict[str, object]:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("app.server:app", host="0.0.0.0", port=7860)
+    uvicorn.run(app, host="0.0.0.0", port=7860)
