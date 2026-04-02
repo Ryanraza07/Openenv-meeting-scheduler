@@ -1,0 +1,41 @@
+name: meeting-scheduler-openenv
+description: Deterministic reinforcement learning environment for choosing the best meeting time slot from participant availability, priority, and required-attendee constraints.
+observation_space:
+  type: object
+  properties:
+    participants:
+      type: array
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+          available_slots:
+            type: array
+            items:
+              type: string
+          priority:
+            type: number
+          required:
+            type: boolean
+    all_slots:
+      type: array
+      items:
+        type: string
+    meeting_duration:
+      type: integer
+action_space:
+  type: object
+  properties:
+    chosen_slot:
+      type: string
+reward_range:
+  min: 0.0
+  max: 1.0
+tasks:
+  - name: easy
+    description: Two participants with a clear best overlap.
+  - name: medium
+    description: Four participants with conflicting availability and one best trade-off.
+  - name: hard
+    description: Required participants constrain the feasible slots and the best solution is still imperfect.
