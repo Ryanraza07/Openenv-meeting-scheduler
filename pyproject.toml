@@ -1,0 +1,11 @@
+[project]
+name = "meeting-openenv"
+version = "0.1.0"
+description = "Meeting Scheduler OpenEnv Environment"
+requires-python = ">=3.10"
+
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic"
+]
