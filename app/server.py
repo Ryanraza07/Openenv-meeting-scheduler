@@ -59,6 +59,37 @@ class HealthResponse(BaseModel):
     status: str = Field(description="Status message")
 
 
+class RootResponse(BaseModel):
+    """Response schema for / endpoint"""
+
+    name: str = Field(description="API name")
+    status: str = Field(description="Service status")
+    docs_url: str = Field(description="OpenAPI docs URL")
+    endpoints: List[str] = Field(description="Available API endpoints")
+
+
+def _serialize_state() -> dict[str, object]:
+    if env._current_state is None:
+        raise HTTPException(status_code=500, detail="Call /reset first")
+
+    state = env.state()
+    return {
+        "participants": [participant.model_dump() for participant in state.participants],
+        "all_slots": state.all_slots,
+        "meeting_duration": state.meeting_duration,
+    }
+
+
+@app.get("/", response_model=RootResponse, tags=["Health"])
+async def root() -> dict[str, object]:
+    return {
+        "name": "Meeting Scheduler API",
+        "status": "ok",
+        "docs_url": "/docs",
+        "endpoints": ["/health", "/reset", "/step", "/state"],
+    }
+
+
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health() -> dict[str, str]:
     """
@@ -80,13 +111,19 @@ async def reset() -> dict[str, object]:
     Returns:
         StateResponse: Initial environment state
     """
-    state = env.reset()
+    env.reset()
+    return _serialize_state()
 
-    return {
-        "participants": [participant.model_dump() for participant in state.participants],
-        "all_slots": state.all_slots,
-        "meeting_duration": state.meeting_duration,
-    }
+
+@app.get("/state", response_model=StateResponse, tags=["Environment"])
+async def state() -> dict[str, object]:
+    """
+    Return the current environment state.
+
+    Returns:
+        StateResponse: Current environment state
+    """
+    return _serialize_state()
 
 
 @app.post("/step", response_model=StepResponse, tags=["Environment"])
