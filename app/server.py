@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import List
 
 from fastapi import FastAPI, HTTPException
@@ -20,6 +21,10 @@ app = FastAPI(
     title="Meeting Scheduler API",
     description="API for scheduling meetings with participant availability constraints",
     version="1.0.0",
+    root_path=os.getenv("HF_SPACE_ROOT_PATH", ""),
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
 )
 
 env = MeetingEnv(load_medium_task)
@@ -65,13 +70,22 @@ class RootResponse(BaseModel):
     name: str = Field(description="API name")
     status: str = Field(description="Service status")
     docs_url: str = Field(description="OpenAPI docs URL")
+    openapi_url: str = Field(description="OpenAPI schema URL")
     endpoints: List[str] = Field(description="Available API endpoints")
 
 
-def _serialize_state() -> dict[str, object]:
-    if env._current_state is None:
-        raise HTTPException(status_code=500, detail="Call /reset first")
+def _prefixed_path(path: str) -> str:
+    root_path = app.root_path.rstrip("/")
+    return f"{root_path}{path}" if root_path else path
 
+
+def _ensure_state() -> None:
+    if env._current_state is None:
+        env.reset()
+
+
+def _serialize_state() -> dict[str, object]:
+    _ensure_state()
     state = env.state()
     return {
         "participants": [participant.model_dump() for participant in state.participants],
@@ -80,13 +94,24 @@ def _serialize_state() -> dict[str, object]:
     }
 
 
+@app.on_event("startup")
+async def initialize_environment() -> None:
+    _ensure_state()
+
+
 @app.get("/", response_model=RootResponse, tags=["Health"])
 async def root() -> dict[str, object]:
     return {
         "name": "Meeting Scheduler API",
         "status": "ok",
-        "docs_url": "/docs",
-        "endpoints": ["/health", "/reset", "/step", "/state"],
+        "docs_url": _prefixed_path("/docs"),
+        "openapi_url": _prefixed_path("/openapi.json"),
+        "endpoints": [
+            _prefixed_path("/health"),
+            _prefixed_path("/reset"),
+            _prefixed_path("/step"),
+            _prefixed_path("/state"),
+        ],
     }
 
 
@@ -143,8 +168,7 @@ async def step(request: StepRequest) -> dict[str, object]:
         HTTPException: 400 if chosen_slot is invalid
         HTTPException: 500 if reset has not been called
     """
-    if env._current_state is None:
-        raise HTTPException(status_code=500, detail="Call /reset first")
+    _ensure_state()
 
     current_state = env.state()
     if request.chosen_slot not in current_state.all_slots:
@@ -177,4 +201,4 @@ async def step(request: StepRequest) -> dict[str, object]:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("app.server:app", host="0.0.0.0", port=7860)
