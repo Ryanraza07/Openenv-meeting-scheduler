@@ -5,9 +5,15 @@ from typing import List
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from app.env.action import Action
-from app.env.environment import MeetingEnv
-from app.tasks.medium import load_medium_task
+try:
+    from .env.action import Action
+    from .env.environment import MeetingEnv
+    from .tasks.medium import load_medium_task
+except ImportError:
+    # Fallback for non-package path (for direct execution or legacy envs)
+    from app.env.action import Action
+    from app.env.environment import MeetingEnv
+    from app.tasks.medium import load_medium_task
 
 
 app = FastAPI(

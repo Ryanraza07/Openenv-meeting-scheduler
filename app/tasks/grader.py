@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_HALF_UP
 
-from app.env.reward import compute_score
-from app.env.state import MeetingState
+try:
+    from ..env.reward import compute_score
+    from ..env.state import MeetingState
+except ImportError:
+    from app.env.reward import compute_score
+    from app.env.state import MeetingState
 
 _GRADE_PRECISION = Decimal("0.000001")
 

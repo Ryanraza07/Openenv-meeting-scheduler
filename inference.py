@@ -5,13 +5,22 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from dotenv import load_dotenv
 
-from app.agent.baseline_agent import choose_best_slot
-from app.env.action import Action
-from app.env.environment import MeetingEnv
-from app.env.reward import compute_score
-from app.env.state import MeetingState, Participant
-from app.tasks.grader import find_best_slot, grade
-from app.tasks.medium import load_medium_task
+try:
+    from .agent.baseline_agent import choose_best_slot
+    from .env.action import Action
+    from .env.environment import MeetingEnv
+    from .env.reward import compute_score
+    from .env.state import MeetingState, Participant
+    from .tasks.grader import find_best_slot, grade
+    from .tasks.medium import load_medium_task
+except ImportError:
+    from app.agent.baseline_agent import choose_best_slot
+    from app.env.action import Action
+    from app.env.environment import MeetingEnv
+    from app.env.reward import compute_score
+    from app.env.state import MeetingState, Participant
+    from app.tasks.grader import find_best_slot, grade
+    from app.tasks.medium import load_medium_task
 
 _DISPLAY_PRECISION = Decimal("0.0001")
 

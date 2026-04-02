@@ -6,7 +6,10 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
-from app.env.state import MeetingState
+try:
+    from ..env.state import MeetingState
+except ImportError:
+    from app.env.state import MeetingState
 
 DEFAULT_MODEL = "gpt-4o-mini"
 

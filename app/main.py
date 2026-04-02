@@ -2,12 +2,20 @@ from __future__ import annotations
 
 import argparse
 
-from app.env.action import Action
-from app.env.environment import MeetingEnv
-from app.tasks.easy import load_easy_task
-from app.tasks.grader import find_best_slot, grade
-from app.tasks.hard import load_hard_task
-from app.tasks.medium import load_medium_task
+try:
+    from .env.action import Action
+    from .env.environment import MeetingEnv
+    from .tasks.easy import load_easy_task
+    from .tasks.grader import find_best_slot, grade
+    from .tasks.hard import load_hard_task
+    from .tasks.medium import load_medium_task
+except ImportError:
+    from app.env.action import Action
+    from app.env.environment import MeetingEnv
+    from app.tasks.easy import load_easy_task
+    from app.tasks.grader import find_best_slot, grade
+    from app.tasks.hard import load_hard_task
+    from app.tasks.medium import load_medium_task
 
 TASKS = {
     "easy": load_easy_task,
