@@ -1,11 +1,9 @@
 ---
-title: Meeting Scheduler
+title: Meeting Scheduler OpenEnv
 emoji: 🤖
 colorFrom: blue
 colorTo: purple
-sdk: gradio
-sdk_version: "4.0.0"
-app_file: app.py
+sdk: docker
 pinned: false
 ---
 
