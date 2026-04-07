@@ -2,9 +2,17 @@ from __future__ import annotations
 
 import os
 
-from dotenv import load_dotenv
-from openai import OpenAI
 from pydantic import BaseModel, Field
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
 
 try:
     from ..env.state import MeetingState
@@ -32,7 +40,11 @@ def _build_prompt(state: MeetingState) -> str:
 
 
 def choose_best_slot(state: MeetingState, model: str | None = None, validate: bool = True) -> str:
-    load_dotenv()
+    if load_dotenv is not None:
+        load_dotenv()
+
+    if OpenAI is None:
+        raise RuntimeError("openai is not installed. Install the optional dependency to use the baseline agent.")
 
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY is missing. Add it to your environment or .env file.")
@@ -40,17 +52,20 @@ def choose_best_slot(state: MeetingState, model: str | None = None, validate: bo
     client = OpenAI()
     selected_model = model or os.getenv("OPENAI_MODEL", DEFAULT_MODEL)
 
-    response = client.responses.parse(
-        model=selected_model,
-        instructions=(
-            "You are a deterministic scheduling agent. "
-            "Respect required participants and maximize total priority."
-        ),
-        input=_build_prompt(state),
-        text_format=SlotDecision,
-        max_output_tokens=32,
-        temperature=0.0,
-    )
+    try:
+        response = client.responses.parse(
+            model=selected_model,
+            instructions=(
+                "You are a deterministic scheduling agent. "
+                "Respect required participants and maximize total priority."
+            ),
+            input=_build_prompt(state),
+            text_format=SlotDecision,
+            max_output_tokens=32,
+            temperature=0.0,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"OpenAI request failed: {exc}") from exc
 
     decision = response.output_parsed
     if decision is None:

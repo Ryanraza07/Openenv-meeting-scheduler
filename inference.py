@@ -3,10 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 
-from dotenv import load_dotenv
-
 try:
-    from .agent.baseline_agent import choose_best_slot
     from .env.action import Action
     from .env.environment import MeetingEnv
     from .env.reward import compute_score
@@ -14,7 +11,6 @@ try:
     from .tasks.grader import find_best_slot, grade
     from .tasks.medium import load_medium_task
 except ImportError:
-    from app.agent.baseline_agent import choose_best_slot
     from app.env.action import Action
     from app.env.environment import MeetingEnv
     from app.env.reward import compute_score
@@ -36,6 +32,13 @@ class SlotAnalysis:
     score: float
 
 
+@dataclass(frozen=True)
+class AgentSelection:
+    chosen_slot: str
+    strategy: str
+    note: str | None = None
+
+
 def _decimal(value: float) -> Decimal:
     return Decimal(str(value))
 
@@ -47,6 +50,39 @@ def _format_decimal(value: Decimal) -> str:
 
 def _format_score(value: float) -> str:
     return _format_decimal(_decimal(value))
+
+
+def _load_baseline_agent():
+    try:
+        from .agent.baseline_agent import choose_best_slot
+    except ImportError:
+        from app.agent.baseline_agent import choose_best_slot
+    return choose_best_slot
+
+
+def _choose_slot(state: MeetingState) -> AgentSelection:
+    fallback_slot = find_best_slot(state)
+
+    try:
+        choose_best_slot = _load_baseline_agent()
+    except ImportError as exc:
+        return AgentSelection(
+            chosen_slot=fallback_slot,
+            strategy="deterministic_fallback",
+            note=f"Optional baseline agent dependencies are unavailable: {exc}",
+        )
+
+    try:
+        return AgentSelection(
+            chosen_slot=choose_best_slot(state, validate=False),
+            strategy="baseline_agent",
+        )
+    except Exception as exc:
+        return AgentSelection(
+            chosen_slot=fallback_slot,
+            strategy="deterministic_fallback",
+            note=f"Baseline agent failed and the local optimal solver was used instead: {exc}",
+        )
 
 
 def _sorted_participants(state: MeetingState) -> list[Participant]:
@@ -189,9 +225,18 @@ def _render_ground_truth(best_slot: str, best_score: float) -> str:
     )
 
 
-def _render_agent_decision(chosen_slot: str, valid_action: bool, reward: float, final_score: float, reason: str | None) -> str:
+def _render_agent_decision(
+    chosen_slot: str,
+    valid_action: bool,
+    reward: float,
+    final_score: float,
+    reason: str | None,
+    strategy: str,
+    note: str | None,
+) -> str:
     lines = [
         "==== AGENT DECISION ====",
+        f"Agent strategy: {strategy}",
         f"Chosen slot: {chosen_slot}",
         f"Slot validation: {'valid' if valid_action else 'invalid'}",
         f"Reward: {_format_score(reward)}",
@@ -199,6 +244,8 @@ def _render_agent_decision(chosen_slot: str, valid_action: bool, reward: float, 
     ]
     if reason:
         lines.append(f"Validation message: {reason}")
+    if note:
+        lines.append(f"Agent note: {note}")
     return "\n".join(lines)
 
 
@@ -214,12 +261,12 @@ def _render_final_evaluation(agent_score: float, optimal_score: float, normalize
 
 
 def main() -> None:
-    load_dotenv()
     debug = True
 
     env = MeetingEnv(load_medium_task)
     current_state = env.reset()
-    chosen_slot = choose_best_slot(current_state, validate=False)
+    selection = _choose_slot(current_state)
+    chosen_slot = selection.chosen_slot
 
     validation_error = _validate_chosen_slot(current_state, chosen_slot)
     if validation_error is None:
@@ -245,7 +292,17 @@ def main() -> None:
 
     print(_render_ground_truth(best_slot, optimal_score))
     print()
-    print(_render_agent_decision(chosen_slot, valid_action, reward, normalized_score, validation_reason))
+    print(
+        _render_agent_decision(
+            chosen_slot,
+            valid_action,
+            reward,
+            normalized_score,
+            validation_reason,
+            selection.strategy,
+            selection.note,
+        )
+    )
     print()
     print("==== EXPLANATION ====")
     print(explain_decision(current_state, chosen_slot))
