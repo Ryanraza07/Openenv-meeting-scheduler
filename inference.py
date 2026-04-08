@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
+import os
+import sys
 
 try:
     from .env.action import Action
@@ -19,6 +21,8 @@ except ImportError:
     from app.tasks.medium import load_medium_task
 
 _DISPLAY_PRECISION = Decimal("0.0001")
+_TASK_NAME = "medium"
+_VERBOSE_ENV_VAR = "INFERENCE_VERBOSE"
 
 
 @dataclass(frozen=True)
@@ -50,6 +54,15 @@ def _format_decimal(value: Decimal) -> str:
 
 def _format_score(value: float) -> str:
     return _format_decimal(_decimal(value))
+
+
+def _emit_structured(tag: str, **fields: object) -> None:
+    payload = " ".join(f"{key}={value}" for key, value in fields.items())
+    print(f"[{tag}] {payload}".rstrip(), flush=True)
+
+
+def _verbose_enabled() -> bool:
+    return os.getenv(_VERBOSE_ENV_VAR, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _load_baseline_agent():
@@ -260,38 +273,26 @@ def _render_final_evaluation(agent_score: float, optimal_score: float, normalize
     )
 
 
-def main() -> None:
-    debug = True
+def _emit_verbose_report(
+    state: MeetingState,
+    best_slot: str,
+    optimal_score: float,
+    chosen_slot: str,
+    valid_action: bool,
+    reward: float,
+    normalized_score: float,
+    validation_reason: str | None,
+    selection: AgentSelection,
+) -> None:
+    if not _verbose_enabled():
+        return
 
-    env = MeetingEnv(load_medium_task)
-    current_state = env.reset()
-    selection = _choose_slot(current_state)
-    chosen_slot = selection.chosen_slot
-
-    validation_error = _validate_chosen_slot(current_state, chosen_slot)
-    if validation_error is None:
-        step_result = env.step(Action(chosen_slot=chosen_slot))
-        valid_action = bool(step_result["info"]["valid_action"])
-        reward = float(step_result["reward"])
-        validation_reason = step_result["info"]["reason"]
-    else:
-        valid_action = False
-        reward = 0.0
-        validation_reason = validation_error
-
-    best_slot = find_best_slot(current_state)
-    optimal_score = compute_score(current_state, best_slot)
-    normalized_score = grade(current_state, chosen_slot)
-
-    print(_render_state_summary(current_state))
-    print()
-
-    if debug:
-        print(_render_slot_analysis(current_state))
-        print()
-
-    print(_render_ground_truth(best_slot, optimal_score))
-    print()
+    print(_render_state_summary(state), file=sys.stderr, flush=True)
+    print(file=sys.stderr, flush=True)
+    print(_render_slot_analysis(state), file=sys.stderr, flush=True)
+    print(file=sys.stderr, flush=True)
+    print(_render_ground_truth(best_slot, optimal_score), file=sys.stderr, flush=True)
+    print(file=sys.stderr, flush=True)
     print(
         _render_agent_decision(
             chosen_slot,
@@ -301,13 +302,67 @@ def main() -> None:
             validation_reason,
             selection.strategy,
             selection.note,
-        )
+        ),
+        file=sys.stderr,
+        flush=True,
     )
-    print()
-    print("==== EXPLANATION ====")
-    print(explain_decision(current_state, chosen_slot))
-    print()
-    print(_render_final_evaluation(reward, optimal_score, normalized_score))
+    print(file=sys.stderr, flush=True)
+    print("==== EXPLANATION ====", file=sys.stderr, flush=True)
+    print(explain_decision(state, chosen_slot), file=sys.stderr, flush=True)
+    print(file=sys.stderr, flush=True)
+    print(
+        _render_final_evaluation(reward, optimal_score, normalized_score),
+        file=sys.stderr,
+        flush=True,
+    )
+
+
+def main() -> None:
+    step_emitted = False
+
+    _emit_structured("START", task=_TASK_NAME)
+
+    try:
+        env = MeetingEnv(load_medium_task)
+        current_state = env.reset()
+        selection = _choose_slot(current_state)
+        chosen_slot = selection.chosen_slot
+
+        validation_error = _validate_chosen_slot(current_state, chosen_slot)
+        if validation_error is None:
+            step_result = env.step(Action(chosen_slot=chosen_slot))
+            valid_action = bool(step_result["info"]["valid_action"])
+            reward = float(step_result["reward"])
+            validation_reason = step_result["info"]["reason"]
+        else:
+            valid_action = False
+            reward = 0.0
+            validation_reason = validation_error
+
+        best_slot = find_best_slot(current_state)
+        optimal_score = compute_score(current_state, best_slot)
+        normalized_score = grade(current_state, chosen_slot)
+
+        _emit_structured("STEP", step=1, reward=_format_score(reward))
+        step_emitted = True
+        _emit_structured("END", task=_TASK_NAME, score=_format_score(normalized_score), steps=1)
+
+        _emit_verbose_report(
+            current_state,
+            best_slot,
+            optimal_score,
+            chosen_slot,
+            valid_action,
+            reward,
+            normalized_score,
+            validation_reason,
+            selection,
+        )
+    except Exception as exc:
+        if not step_emitted:
+            _emit_structured("STEP", step=1, reward=_format_score(0.0))
+        _emit_structured("END", task=_TASK_NAME, score=_format_score(0.0), steps=1)
+        print(f"inference error: {exc}", file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":
