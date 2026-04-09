@@ -10,10 +10,17 @@ except ImportError:
     from app.env.state import MeetingState
 
 _GRADE_PRECISION = Decimal("0.000001")
+_DISPLAY_SAFE_MARGIN = Decimal("0.0001")
+_ONE = Decimal("1")
 
 
 def _normalize_grade(value: Decimal) -> float:
     return float(value.quantize(_GRADE_PRECISION, rounding=ROUND_HALF_UP))
+
+
+def _bound_grade(value: Decimal) -> float:
+    bounded = min(_ONE - _DISPLAY_SAFE_MARGIN, max(_DISPLAY_SAFE_MARGIN, value))
+    return _normalize_grade(bounded)
 
 
 def _score_or_zero(state: MeetingState, slot: str) -> float:
@@ -41,6 +48,7 @@ def grade(state: MeetingState, chosen_slot: str) -> float:
     chosen_reward = Decimal(str(_score_or_zero(state, chosen_slot)))
 
     if best_reward == 0:
-        return 1.0 if chosen_reward == 0 else 0.0
+        raw_grade = _ONE if chosen_reward == 0 else Decimal("0")
+        return _bound_grade(raw_grade)
 
-    return _normalize_grade(chosen_reward / best_reward)
+    return _bound_grade(chosen_reward / best_reward)

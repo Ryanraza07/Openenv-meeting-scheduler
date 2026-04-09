@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 import os
@@ -10,19 +11,28 @@ try:
     from .env.environment import MeetingEnv
     from .env.reward import compute_score
     from .env.state import MeetingState, Participant
+    from .tasks.easy import load_easy_task
     from .tasks.grader import find_best_slot, grade
+    from .tasks.hard import load_hard_task
     from .tasks.medium import load_medium_task
 except ImportError:
     from app.env.action import Action
     from app.env.environment import MeetingEnv
     from app.env.reward import compute_score
     from app.env.state import MeetingState, Participant
+    from app.tasks.easy import load_easy_task
     from app.tasks.grader import find_best_slot, grade
+    from app.tasks.hard import load_hard_task
     from app.tasks.medium import load_medium_task
 
 _DISPLAY_PRECISION = Decimal("0.0001")
-_TASK_NAME = "medium"
 _VERBOSE_ENV_VAR = "INFERENCE_VERBOSE"
+_FALLBACK_SCORE = 0.0001
+TASK_LOADERS: dict[str, Callable[[], MeetingState]] = {
+    "easy": load_easy_task,
+    "medium": load_medium_task,
+    "hard": load_hard_task,
+}
 
 
 @dataclass(frozen=True)
@@ -274,6 +284,7 @@ def _render_final_evaluation(agent_score: float, optimal_score: float, normalize
 
 
 def _emit_verbose_report(
+    task_name: str,
     state: MeetingState,
     best_slot: str,
     optimal_score: float,
@@ -287,6 +298,7 @@ def _emit_verbose_report(
     if not _verbose_enabled():
         return
 
+    print(f"==== TASK {task_name.upper()} ====", file=sys.stderr, flush=True)
     print(_render_state_summary(state), file=sys.stderr, flush=True)
     print(file=sys.stderr, flush=True)
     print(_render_slot_analysis(state), file=sys.stderr, flush=True)
@@ -317,13 +329,13 @@ def _emit_verbose_report(
     )
 
 
-def main() -> None:
+def _run_task(task_name: str, task_loader: Callable[[], MeetingState]) -> None:
     step_emitted = False
 
-    _emit_structured("START", task=_TASK_NAME)
+    _emit_structured("START", task=task_name)
 
     try:
-        env = MeetingEnv(load_medium_task)
+        env = MeetingEnv(task_loader)
         current_state = env.reset()
         selection = _choose_slot(current_state)
         chosen_slot = selection.chosen_slot
@@ -345,9 +357,10 @@ def main() -> None:
 
         _emit_structured("STEP", step=1, reward=_format_score(reward))
         step_emitted = True
-        _emit_structured("END", task=_TASK_NAME, score=_format_score(normalized_score), steps=1)
+        _emit_structured("END", task=task_name, score=_format_score(normalized_score), steps=1)
 
         _emit_verbose_report(
+            task_name,
             current_state,
             best_slot,
             optimal_score,
@@ -361,8 +374,13 @@ def main() -> None:
     except Exception as exc:
         if not step_emitted:
             _emit_structured("STEP", step=1, reward=_format_score(0.0))
-        _emit_structured("END", task=_TASK_NAME, score=_format_score(0.0), steps=1)
-        print(f"inference error: {exc}", file=sys.stderr, flush=True)
+        _emit_structured("END", task=task_name, score=_format_score(_FALLBACK_SCORE), steps=1)
+        print(f"{task_name} inference error: {exc}", file=sys.stderr, flush=True)
+
+
+def main() -> None:
+    for task_name, task_loader in TASK_LOADERS.items():
+        _run_task(task_name, task_loader)
 
 
 if __name__ == "__main__":

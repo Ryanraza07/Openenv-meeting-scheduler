@@ -8,11 +8,15 @@ from pydantic import BaseModel, Field
 try:
     from .env.action import Action
     from .env.environment import MeetingEnv
+    from .tasks.easy import load_easy_task
+    from .tasks.hard import load_hard_task
     from .tasks.medium import load_medium_task
 except ImportError:
     # Fallback for non-package path (for direct execution or legacy envs)
     from app.env.action import Action
     from app.env.environment import MeetingEnv
+    from app.tasks.easy import load_easy_task
+    from app.tasks.hard import load_hard_task
     from app.tasks.medium import load_medium_task
 
 
@@ -23,7 +27,13 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
-env = MeetingEnv(load_medium_task)
+TASK_LOADERS = {
+    "easy": load_easy_task,
+    "medium": load_medium_task,
+    "hard": load_hard_task,
+}
+
+env = MeetingEnv(TASK_LOADERS["medium"])
 
 
 class ParticipantResponse(BaseModel):
@@ -43,6 +53,10 @@ class StepRequest(BaseModel):
     """Request schema for /step endpoint"""
 
     chosen_slot: str = Field(min_length=1, description="The chosen time slot for the meeting")
+
+
+class ResetRequest(BaseModel):
+    task_level: str = Field(default="medium", description="Task level to initialize")
 
 
 class StepResponse(BaseModel):
@@ -73,6 +87,12 @@ class RootResponse(BaseModel):
 def _ensure_state() -> None:
     if env._current_state is None:
         env.reset()
+
+
+def _set_task_level(task_level: str) -> None:
+    if task_level not in TASK_LOADERS:
+        raise HTTPException(status_code=400, detail=f"Unknown task level '{task_level}'")
+    env._task_loader = TASK_LOADERS[task_level]
 
 
 def _serialize_state() -> dict[str, object]:
@@ -113,7 +133,7 @@ async def health() -> dict[str, str]:
 
 
 @app.post("/reset", response_model=StateResponse, tags=["Environment"])
-async def reset() -> dict[str, object]:
+async def reset(request: ResetRequest | None = None) -> dict[str, object]:
     """
     Reset the meeting scheduler environment.
 
@@ -122,6 +142,8 @@ async def reset() -> dict[str, object]:
     Returns:
         StateResponse: Initial environment state
     """
+    requested_task = request.task_level if request is not None else "medium"
+    _set_task_level(requested_task)
     env.reset()
     return _serialize_state()
 
